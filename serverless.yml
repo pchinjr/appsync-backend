@@ -1,4 +1,4 @@
-service: appsync-backend
+service: appsyncmasterclass-backend
 frameworkVersion: '2'
 
 plugins:
@@ -15,7 +15,7 @@ package:
     - package.json
 
 custom:
-  appsync:
+  appSync:
     - ${file(serverless.appsync-api.yml)}
 
 resources:
@@ -39,6 +39,18 @@ resources:
             Name: name
             Required: false
             Mutable: true
+
+    WebUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        UserPoolId: !Ref CognitoUserPool
+        ClientName: web
+        ExplicitAuthFlows:
+          - ALLOW_USER_SRP_AUTH
+          - ALLOW_USER_PASSWORD_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+        PreventUserExistenceErrors: ENABLED
+
   Outputs:
     CognitoUserPoolId:
       Value: !Ref CognitoUserPool
