@@ -1,0 +1,23 @@
+{
+  "name": "appsync-backend",
+  "version": "1.0.0",
+  "description": "backend for the appsync demo app",
+  "main": "index.js",
+  "scripts": {
+    "sls": "sls"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/pchinjr/appsync-backend.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/pchinjr/appsync-backend/issues"
+  },
+  "homepage": "https://github.com/pchinjr/appsync-backend#readme",
+  "devDependencies": {
+    "serverless": "2.40.0",
+    "serverless-appsync-plugin": "^1.11.3"
+  }
+}

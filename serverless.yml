@@ -1,0 +1,44 @@
+service: appsync-backend
+frameworkVersion: '2'
+
+plugins:
+  - serverless-appsync-plugin
+
+provider:
+  name: aws
+  runtime: nodejs12.x
+  region: eu-west-1
+
+package:
+  exclude:
+    - package-lock.json
+    - package.json
+
+custom:
+  appsync:
+    - ${file(serverless.appsync-api.yml)}
+
+resources:
+  Resources:
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        AutoVerifiedAttributes:
+          - email
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+            RequireLowercase: false
+            RequireNumbers: false
+            RequireUppercase: false
+            RequireSymbols: false
+        UsernameAttributes:
+          - email
+        Schema:
+          - AttributeDataType: String
+            Name: name
+            Required: false
+            Mutable: true
+  Outputs:
+    CognitoUserPoolId:
+      Value: !Ref CognitoUserPool
