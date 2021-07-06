@@ -11,6 +11,10 @@ mappingTemplates:
     field: getMyProfile
     dataSource: usersTable
 
+  - type: Mutation
+    field: editMyProfile
+    dataSource: usersTable
+
 dataSources:
   - type: NONE
     name: none
@@ -18,4 +22,3 @@ dataSources:
     name: usersTable
     config:
       tableName: !Ref UsersTable
-      serviceRoleArn:
