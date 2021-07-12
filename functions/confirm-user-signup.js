@@ -20,7 +20,7 @@ module.exports.handler = async (event) => {
       tweetsCount: 0,
       likesCounts: 0
     }
-
+    
     await DocumentClient.put({
       TableName: USERS_TABLE,
       Item: user,
