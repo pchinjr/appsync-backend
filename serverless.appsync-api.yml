@@ -5,8 +5,14 @@ userPoolConfig:
   awsRegion: eu-west-1
   defaultAction: ALLOW
   userPoolId: !Ref CognitoUserPool
+additionalAuthenticationProviders:
+  - authenticationType: AWS_IAM
 mappingTemplatesLocation: mapping-templates
 mappingTemplates:
+  - type: Subscription
+    field: onNotified
+    dataSource: none
+
   - type: Query
     field: getMyProfile
     dataSource: usersTable
@@ -43,6 +49,22 @@ mappingTemplates:
       - hydrateFollowing
     request: simplePipeline.request.vtl
     response: simplePipeline.response.vtl
+  - type: Query
+    field: search
+    dataSource: searchFunction
+    request: false
+    response: false
+  - type: Query
+    field: getHashTag
+    dataSource: getHashTagFunction
+    request: false
+    response: false
+  - type: Query
+    field: listConversations
+    dataSource: conversationsTable
+  - type: Query
+    field: getDirectMessages
+    dataSource: directMessagesTable
 
   - type: Mutation
     field: editMyProfile
@@ -79,6 +101,26 @@ mappingTemplates:
   - type: Mutation
     field: unfollow
     dataSource: unfollowMutation
+  - type: Mutation
+    field: notifyRetweeted
+    dataSource: notificationsTable
+  - type: Mutation
+    field: notifyLiked
+    dataSource: notificationsTable
+  - type: Mutation
+    field: notifyDMed
+    dataSource: notificationsTable
+  - type: Mutation
+    field: notifyMentioned
+    dataSource: notificationsTable
+  - type: Mutation
+    field: notifyReplied
+    dataSource: notificationsTable
+  - type: Mutation
+    field: sendDirectMessage
+    dataSource: sendDirectMessageFunction
+    request: false
+    response: false
 
   # NESTED FIELDS
   - type: Tweet
@@ -136,6 +178,12 @@ mappingTemplates:
   - type: OtherProfile
     field: followedBy
     dataSource: relationshipsTable
+  - type: Conversation
+    field: otherUser
+    dataSource: usersTable
+  - type: Message
+    field: from
+    dataSource: usersTable
 
 functionConfigurations:
   - name: getFollowers
@@ -175,6 +223,18 @@ dataSources:
     config:
       tableName: !Ref RelationshipsTable
   - type: AMAZON_DYNAMODB
+    name: notificationsTable
+    config:
+      tableName: !Ref NotificationsTable
+  - type: AMAZON_DYNAMODB
+    name: conversationsTable
+    config:
+      tableName: !Ref ConversationsTable
+  - type: AMAZON_DYNAMODB
+    name: directMessagesTable
+    config:
+      tableName: !Ref DirectMessagesTable
+  - type: AMAZON_DYNAMODB
     name: likeMutation
     config:
       tableName: !Ref LikesTable
@@ -184,7 +244,7 @@ dataSources:
           Resource: !GetAtt LikesTable.Arn
         - Effect: Allow
           Action: dynamodb:UpdateItem
-          Resource: 
+          Resource:
             - !GetAtt UsersTable.Arn
             - !GetAtt TweetsTable.Arn
   - type: AMAZON_DYNAMODB
@@ -197,7 +257,7 @@ dataSources:
           Resource: !GetAtt LikesTable.Arn
         - Effect: Allow
           Action: dynamodb:UpdateItem
-          Resource: 
+          Resource:
             - !GetAtt UsersTable.Arn
             - !GetAtt TweetsTable.Arn
   - type: AMAZON_DYNAMODB
@@ -242,6 +302,18 @@ dataSources:
     name: replyFunction
     config:
       functionName: reply
+  - type: AWS_LAMBDA
+    name: searchFunction
+    config:
+      functionName: search
+  - type: AWS_LAMBDA
+    name: getHashTagFunction
+    config:
+      functionName: getHashTag
+  - type: AWS_LAMBDA
+    name: sendDirectMessageFunction
+    config:
+      functionName: sendDirectMessage
 
 substitutions:
   TweetsTable: !Ref TweetsTable

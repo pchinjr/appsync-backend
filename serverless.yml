@@ -5,7 +5,7 @@ plugins:
   - serverless-appsync-plugin
   - serverless-iam-roles-per-function
   - serverless-export-env
-  - serverless-manifest-plugin
+  - serverless-layers
 
 provider:
   name: aws
@@ -26,11 +26,8 @@ custom:
   appSync:
     - ${file(serverless.appsync-api.yml)}
 
-  manifest:
-    postProcess: ./processManifest.js
-    disablePostDeployGeneration: true
-    disableOutput: true
-    silent: true
+  serverless-layers:
+    layersDeploymentBucket: ${ssm:/appsyncmasterclass/${self:custom.stage}/layer-deployment-bucket}
 
 functions:
   confirmUserSignup:
@@ -82,7 +79,7 @@ functions:
         Resource: !GetAtt TweetsTable.Arn
       - Effect: Allow
         Action: dynamodb:UpdateItem
-        Resource: 
+        Resource:
           - !GetAtt TweetsTable.Arn
           - !GetAtt UsersTable.Arn
       - Effect: Allow
@@ -104,7 +101,7 @@ functions:
         Resource: !GetAtt TweetsTable.Arn
       - Effect: Allow
         Action: dynamodb:UpdateItem
-        Resource: 
+        Resource:
           - !GetAtt TweetsTable.Arn
           - !GetAtt UsersTable.Arn
       - Effect: Allow
@@ -129,7 +126,7 @@ functions:
         Resource: !Sub "${TweetsTable.Arn}/index/retweetsByCreator"
       - Effect: Allow
         Action: dynamodb:UpdateItem
-        Resource: 
+        Resource:
           - !GetAtt TweetsTable.Arn
           - !GetAtt UsersTable.Arn
       - Effect: Allow
@@ -150,7 +147,7 @@ functions:
           arn: !GetAtt TweetsTable.StreamArn
     iamRoleStatements:
       - Effect: Allow
-        Action: 
+        Action:
           - dynamodb:PutItem
           - dynamodb:DeleteItem
           - dynamodb:BatchWriteItem
@@ -177,11 +174,119 @@ functions:
           - !Sub "${TweetsTable.Arn}/index/byCreator"
           - !Sub "${TimelinesTable.Arn}/index/byDistributedFrom"
       - Effect: Allow
-        Action: 
+        Action:
           - dynamodb:BatchWriteItem
           - dynamodb:PutItem
           - dynamodb:DeleteItem
         Resource: !GetAtt TimelinesTable.Arn
+
+  syncUsersToAlgolia:
+    handler: functions/sync-users-to-algolia.handler
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt UsersTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action: ssm:GetParameters
+        Resource:
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${self:custom.stage}/algolia-app-id
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${self:custom.stage}/algolia-admin-key
+
+  syncTweetsToAlgolia:
+    handler: functions/sync-tweets-to-algolia.handler
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt TweetsTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action: ssm:GetParameters
+        Resource:
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${self:custom.stage}/algolia-app-id
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${self:custom.stage}/algolia-admin-key
+
+  search:
+    handler: functions/search.handler
+    iamRoleStatements:
+      - Effect: Allow
+        Action: ssm:GetParameters
+        Resource:
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${self:custom.stage}/algolia-app-id
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${self:custom.stage}/algolia-admin-key
+
+  getHashTag:
+    handler: functions/get-hash-tag.handler
+    iamRoleStatements:
+      - Effect: Allow
+        Action: ssm:GetParameters
+        Resource:
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${self:custom.stage}/algolia-app-id
+          - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${self:custom.stage}/algolia-admin-key
+
+  notify:
+    handler: functions/notify.handler
+    environment:
+      GRAPHQL_API_URL: !GetAtt AppsyncmasterclassGraphQlApi.GraphQLUrl
+      TWEETS_TABLE: !Ref TweetsTable
+      USERS_TABLE: !Ref UsersTable
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt TweetsTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action: appsync:GraphQL
+        Resource: !Sub ${AppsyncmasterclassGraphQlApi.Arn}/*
+      - Effect: Allow
+        Action: dynamodb:GetItem
+        Resource: !GetAtt TweetsTable.Arn
+      - Effect: Allow
+        Action: dynamodb:Query
+        Resource: !Sub ${UsersTable.Arn}/index/byScreenName
+
+  notifyLiked:
+    handler: functions/notify-liked.handler
+    environment:
+      GRAPHQL_API_URL: !GetAtt AppsyncmasterclassGraphQlApi.GraphQLUrl
+      TWEETS_TABLE: !Ref TweetsTable
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt LikesTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action: appsync:GraphQL
+        Resource: !Sub ${AppsyncmasterclassGraphQlApi.Arn}/*
+      - Effect: Allow
+        Action: dynamodb:GetItem
+        Resource: !GetAtt TweetsTable.Arn
+
+  notifyDmed:
+    handler: functions/notify-dmed.handler
+    environment:
+      GRAPHQL_API_URL: !GetAtt AppsyncmasterclassGraphQlApi.GraphQLUrl
+    events:
+      - stream:
+          type: dynamodb
+          arn: !GetAtt DirectMessagesTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action: appsync:GraphQL
+        Resource: !Sub ${AppsyncmasterclassGraphQlApi.Arn}/*
+
+  sendDirectMessage:
+    handler: functions/send-direct-message.handler
+    environment:
+      CONVERSATIONS_TABLE: !Ref ConversationsTable
+      DIRECT_MESSAGES_TABLE: !Ref DirectMessagesTable
+    iamRoleStatements:
+      - Effect: Allow
+        Action: dynamodb:PutItem
+        Resource: !GetAtt DirectMessagesTable.Arn
+      - Effect: Allow
+        Action: dynamodb:UpdateItem
+        Resource: !GetAtt ConversationsTable.Arn
 
 resources:
   Resources:
@@ -204,6 +309,8 @@ resources:
                 KeyType: HASH
             Projection:
               ProjectionType: ALL
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
         Tags:
           - Key: Environment
             Value: ${self:custom.stage}
@@ -304,6 +411,8 @@ resources:
             AttributeType: S
           - AttributeName: tweetId
             AttributeType: S
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
         Tags:
           - Key: Environment
             Value: ${self:custom.stage}
@@ -362,7 +471,89 @@ resources:
             Value: ${self:custom.stage}
           - Key: Name
             Value: relationships-table
-            
+
+    NotificationsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+          - AttributeName: userId
+            KeyType: RANGE
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+          - AttributeName: userId
+            AttributeType: S
+        GlobalSecondaryIndexes:
+          - IndexName: byUserId
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: id
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        Tags:
+          - Key: Environment
+            Value: ${self:custom.stage}
+          - Key: Name
+            Value: notifications-table
+
+    ConversationsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: userId
+            KeyType: HASH
+          - AttributeName: otherUserId
+            KeyType: RANGE
+        AttributeDefinitions:
+          - AttributeName: userId
+            AttributeType: S
+          - AttributeName: otherUserId
+            AttributeType: S
+          - AttributeName: lastModified
+            AttributeType: S
+        GlobalSecondaryIndexes:
+          - IndexName: byUserId
+            KeySchema:
+              - AttributeName: userId
+                KeyType: HASH
+              - AttributeName: lastModified
+                KeyType: RANGE
+            Projection:
+              ProjectionType: ALL
+        Tags:
+          - Key: Environment
+            Value: ${self:custom.stage}
+          - Key: Name
+            Value: conversations-table
+
+    DirectMessagesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        KeySchema:
+          - AttributeName: conversationId
+            KeyType: HASH
+          - AttributeName: messageId
+            KeyType: RANGE
+        AttributeDefinitions:
+          - AttributeName: conversationId
+            AttributeType: S
+          - AttributeName: messageId
+            AttributeType: S
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+        Tags:
+          - Key: Environment
+            Value: ${self:custom.stage}
+          - Key: Name
+            Value: direct-messages-table
+
     CognitoUserPool:
       Type: AWS::Cognito::UserPool
       Properties:
@@ -428,3 +619,6 @@ resources:
 
     WebCognitoUserPoolClientId:
       Value: !Ref WebUserPoolClient
+
+    ApiUrl:
+      Value: !GetAtt AppsyncmasterclassGraphQlApi.GraphQLUrl
